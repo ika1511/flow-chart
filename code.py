@@ -4,18 +4,18 @@ import json
 import uuid
 import re
 
-# Streamlit UI config
+# Page setup
 st.set_page_config(layout="wide")
 st.title("Claude 3.5 → Mermaid Flowchart Generator")
 
-# AWS credentials from Streamlit secrets
+# AWS credentials from secrets
 AWS_ACCESS_KEY_ID = st.secrets["AWS_ACCESS_KEY_ID"]
 AWS_SECRET_ACCESS_KEY = st.secrets["AWS_SECRET_ACCESS_KEY"]
 AWS_SESSION_TOKEN = st.secrets["AWS_SESSION_TOKEN"]
 REGION = "us-west-2"
 MODEL_ID = "anthropic.claude-3-5-sonnet-20240620-v1:0"
 
-# Claude 3.5 API call
+# Claude 3.5 via AWS Bedrock
 def call_claude(logic_text):
     session = boto3.Session(
         aws_access_key_id=AWS_ACCESS_KEY_ID,
@@ -23,13 +23,13 @@ def call_claude(logic_text):
         aws_session_token=AWS_SESSION_TOKEN,
         region_name=REGION
     )
-
     client = session.client("bedrock-runtime")
 
     prompt = (
-        "Convert the following logic into a Mermaid flowchart. "
-        "Return only the Mermaid code. Do not include explanations or introductory text. "
-        "The output must begin with 'flowchart TD' or 'graph TD'.\n\n"
+        "Convert the following logical process into a valid Mermaid flowchart. "
+        "Only return the diagram, beginning with 'flowchart TD' or 'graph TD'. "
+        "Use '-->' for arrows, and '-- Yes -->' for branches. "
+        "Do not include explanations, markdown formatting, or extra text.\n\n"
         f"{logic_text}"
     )
 
@@ -40,9 +40,7 @@ def call_claude(logic_text):
         "messages": [
             {
                 "role": "user",
-                "content": [
-                    {"type": "text", "text": prompt}
-                ]
+                "content": [{"type": "text", "text": prompt}]
             }
         ]
     }
@@ -57,34 +55,37 @@ def call_claude(logic_text):
     result = json.loads(response["body"].read())
     return result["content"][0]["text"]
 
-# Clean and extract Mermaid code only
+# Mermaid sanitizer
 def sanitize_mermaid_code(raw_code: str) -> str:
     code = raw_code.strip()
-
-    # Extract from first valid line starting with 'flowchart TD' or 'graph TD'
-    diagram_start = re.search(r"(flowchart\s+TD|graph\s+TD)", code, re.IGNORECASE)
-    if diagram_start:
-        code = code[diagram_start.start():]
-
+    # Strip markdown formatting
+    code = re.sub(r"^```mermaid", "", code, flags=re.IGNORECASE).strip()
+    code = re.sub(r"```$", "", code).strip()
     # Normalize arrows
     code = re.sub(r"--\s*>", "-->", code)
     code = re.sub(r"==>", "-->", code)
     code = re.sub(r"-{3,}>", "-->", code)
     code = re.sub(r"-->\s*\|(.*?)\|\s*", r"-- \1 -->", code)
-
+    # Trim to start of diagram
+    diagram_start = re.search(r"(flowchart\s+TD|graph\s+TD)", code, re.IGNORECASE)
+    if diagram_start:
+        code = code[diagram_start.start():]
     return code
 
-# UI input and rendering
-logic_text = st.text_area("Enter a logical process description:", height=200)
+# UI
+default_example = "Start → Verify user → If verified → Show dashboard → Else → Show error"
+logic_text = st.text_area("Enter a logical process description:", value=default_example, height=200)
 
 if st.button("Generate Mermaid Diagram"):
-    if logic_text.strip():
-        with st.spinner("Calling Claude 3.5..."):
+    if logic_text.strip().lower().startswith("a logical description"):
+        st.warning("Please enter an actual process description, not a placeholder.")
+    else:
+        with st.spinner("Processing..."):
             try:
                 raw_output = call_claude(logic_text)
                 mermaid_code = sanitize_mermaid_code(raw_output)
 
-                st.subheader("Mermaid Code (Cleaned)")
+                st.subheader("Mermaid Code")
                 st.code(mermaid_code, language="mermaid")
 
                 st.subheader("Rendered Diagram")
@@ -99,6 +100,4 @@ if st.button("Generate Mermaid Diagram"):
                     <script>mermaid.initialize({{ startOnLoad: true }});</script>
                 """, height=500, scrolling=True)
             except Exception as e:
-                st.error(f"An error occurred: {str(e)}")
-    else:
-        st.warning("Please enter a process description first.")
+                st.error(f"Error: {str(e)}")
