@@ -2,19 +2,20 @@ import streamlit as st
 import boto3
 import json
 import uuid
+import re
 
-# --- Streamlit UI ---
+# Configure Streamlit layout
 st.set_page_config(layout="wide")
-st.title("Claude 3.5 → Mermaid Flowchart Generator")
+st.title("Claude 3.5 to Mermaid Flowchart Generator")
 
-# --- AWS Credentials from Streamlit Secrets ---
+# Load AWS credentials from Streamlit secrets
 AWS_ACCESS_KEY_ID = st.secrets["AWS_ACCESS_KEY_ID"]
 AWS_SECRET_ACCESS_KEY = st.secrets["AWS_SECRET_ACCESS_KEY"]
 AWS_SESSION_TOKEN = st.secrets["AWS_SESSION_TOKEN"]
 REGION = "us-west-2"
 MODEL_ID = "anthropic.claude-3-5-sonnet-20240620-v1:0"
 
-# --- Claude 3.5 via Bedrock ---
+# Function to call Claude 3.5 via Bedrock with a logic string
 def call_claude(logic_text):
     session = boto3.Session(
         aws_access_key_id=AWS_ACCESS_KEY_ID,
@@ -24,6 +25,13 @@ def call_claude(logic_text):
     )
 
     client = session.client("bedrock-runtime")
+
+    prompt = (
+        "Convert the following logical process description into a Mermaid flowchart. "
+        "Use only valid Mermaid syntax. Use '-->' for arrows and do not include explanations. "
+        "Return only a ```mermaid``` code block.\n\n"
+        f"{logic_text}"
+    )
 
     payload = {
         "anthropic_version": "bedrock-2023-05-31",
@@ -35,11 +43,7 @@ def call_claude(logic_text):
                 "content": [
                     {
                         "type": "text",
-                        "text": (
-                            "Convert the following process logic into a Mermaid flowchart. "
-                            "Only return the Mermaid diagram inside a ```mermaid``` code block.\n\n"
-                            f"{logic_text}"
-                        )
+                        "text": prompt
                     }
                 ]
             }
@@ -56,22 +60,38 @@ def call_claude(logic_text):
     result = json.loads(response["body"].read())
     return result["content"][0]["text"]
 
-# --- UI Logic ---
-logic_text = st.text_area("Enter a logical description of a process (as a string):", height=200)
+# Function to clean and correct Mermaid syntax from Claude
+def sanitize_mermaid_code(raw_code: str) -> str:
+    code = raw_code.strip()
+
+    # Remove code block wrappers
+    code = re.sub(r"^```mermaid", "", code, flags=re.IGNORECASE).strip()
+    code = re.sub(r"```$", "", code).strip()
+
+    # Normalize arrow syntax
+    code = re.sub(r"--\s*>", "-->", code)
+    code = re.sub(r"==>", "-->", code)
+    code = re.sub(r"-{3,}>", "-->", code)
+
+    # Normalize diagram type
+    code = re.sub(r"^flowchart\s+TD", "graph TD", code, flags=re.IGNORECASE)
+
+    return code
+
+# Streamlit UI logic
+logic_text = st.text_area("Enter a logical process description (as plain text):", height=200)
 
 if st.button("Generate Mermaid Diagram"):
     if logic_text.strip():
-        with st.spinner("Calling Claude 3.5 via AWS Bedrock..."):
+        with st.spinner("Processing..."):
             try:
-                raw_mermaid = call_claude(logic_text)
-                # Strip code block wrapper if present
-                mermaid_code = raw_mermaid.replace("```mermaid", "").replace("```", "").strip()
+                raw_output = call_claude(logic_text)
+                mermaid_code = sanitize_mermaid_code(raw_output)
 
-                st.subheader("📋 Mermaid Code")
+                st.subheader("Generated Mermaid Code")
                 st.code(mermaid_code, language="mermaid")
 
-                # Render Mermaid live using HTML/JS injection
-                st.subheader("🖼️ Rendered Diagram")
+                st.subheader("Rendered Diagram")
                 unique_id = str(uuid.uuid4()).replace("-", "")
                 st.components.v1.html(f"""
                     <div id="mermaid-{unique_id}">
@@ -84,6 +104,6 @@ if st.button("Generate Mermaid Diagram"):
                 """, height=500, scrolling=True)
 
             except Exception as e:
-                st.error(f"❌ Error: {str(e)}")
+                st.error(f"An error occurred: {str(e)}")
     else:
-        st.warning("Please enter some process logic.")
+        st.warning("Please enter a process description before generating the diagram.")
