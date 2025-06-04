@@ -4,18 +4,18 @@ import json
 import uuid
 import re
 
-# Page layout
+# Streamlit layout
 st.set_page_config(layout="wide")
 st.title("Claude 3.5 → Mermaid Flowchart Generator")
 
-# AWS secrets
+# AWS credentials from Streamlit secrets
 AWS_ACCESS_KEY_ID = st.secrets["AWS_ACCESS_KEY_ID"]
 AWS_SECRET_ACCESS_KEY = st.secrets["AWS_SECRET_ACCESS_KEY"]
 AWS_SESSION_TOKEN = st.secrets["AWS_SESSION_TOKEN"]
 REGION = "us-west-2"
 MODEL_ID = "anthropic.claude-3-5-sonnet-20240620-v1:0"
 
-# Claude API call
+# Function to query Claude 3.5 via Bedrock
 def call_claude(logic_text):
     session = boto3.Session(
         aws_access_key_id=AWS_ACCESS_KEY_ID,
@@ -53,7 +53,7 @@ def call_claude(logic_text):
     result = json.loads(response["body"].read())
     return result["content"][0]["text"]
 
-# Mermaid syntax cleaner
+# Function to sanitize Mermaid output
 def sanitize_mermaid_code(raw_code: str) -> str:
     code = raw_code.strip()
     code = re.sub(r"^```mermaid", "", code, flags=re.IGNORECASE).strip()
@@ -67,20 +67,21 @@ def sanitize_mermaid_code(raw_code: str) -> str:
         code = code[diagram_start.start():]
     return code
 
-# Preloaded working prompt
+# Default working input
 default_prompt = "steps involved in a description of string"
 logic_text = st.text_area("Enter a logical process or phrase:", value=default_prompt, height=200)
 
-# UI button
 if st.button("Generate Mermaid Diagram"):
     with st.spinner("Calling Claude 3.5 via Bedrock..."):
         try:
             raw_output = call_claude(logic_text)
             mermaid_code = sanitize_mermaid_code(raw_output)
 
+            # Mermaid code output
             st.subheader("Mermaid Code")
             st.code(mermaid_code, language="mermaid")
 
+            # Render diagram
             st.subheader("Rendered Diagram")
             unique_id = str(uuid.uuid4()).replace("-", "")
             st.components.v1.html(f"""
@@ -92,6 +93,21 @@ if st.button("Generate Mermaid Diagram"):
                 <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
                 <script>mermaid.initialize({{ startOnLoad: true }});</script>
             """, height=500, scrolling=True)
+
+            # Download button for .mmd file
+            st.subheader("Download Mermaid Diagram")
+            st.download_button(
+                label="Download Mermaid Code (.mmd)",
+                data=mermaid_code,
+                file_name="flowchart.mmd",
+                mime="text/plain"
+            )
+
+            # Export instructions
+            st.markdown(
+                "To export this as an image, paste the code at [https://mermaid.live](https://mermaid.live) "
+                "and use the Export menu to download it as PNG or SVG."
+            )
+
         except Exception as e:
             st.error(f"Error: {str(e)}")
-
