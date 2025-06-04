@@ -3,9 +3,9 @@ import boto3
 import json
 import uuid
 import re
-import base64
+import urllib.parse
 
-# Streamlit layout
+# Streamlit setup
 st.set_page_config(layout="wide")
 st.title("Claude 3.5 → Mermaid Flowchart Generator")
 
@@ -16,7 +16,7 @@ AWS_SESSION_TOKEN = st.secrets["AWS_SESSION_TOKEN"]
 REGION = "us-west-2"
 MODEL_ID = "anthropic.claude-3-5-sonnet-20240620-v1:0"
 
-# Claude Bedrock call
+# Claude API call
 def call_claude(logic_text):
     session = boto3.Session(
         aws_access_key_id=AWS_ACCESS_KEY_ID,
@@ -49,7 +49,7 @@ def call_claude(logic_text):
     result = json.loads(response["body"].read())
     return result["content"][0]["text"]
 
-# Clean and fix Mermaid syntax
+# Clean Claude's output
 def sanitize_mermaid_code(raw_code: str) -> str:
     code = raw_code.strip()
     code = re.sub(r"^```mermaid", "", code, flags=re.IGNORECASE).strip()
@@ -63,13 +63,12 @@ def sanitize_mermaid_code(raw_code: str) -> str:
         code = code[diagram_start.start():]
     return code
 
-# Default input
+# UI: text area
 default_prompt = "steps involved in a description of string"
 logic_text = st.text_area("Enter a process description:", value=default_prompt, height=200)
 
-mermaid_code = None
-
 # Generate diagram
+mermaid_code = None
 if st.button("Generate Mermaid Diagram"):
     with st.spinner("Calling Claude 3.5..."):
         try:
@@ -94,7 +93,7 @@ if st.button("Generate Mermaid Diagram"):
         except Exception as e:
             st.error(f"Error: {str(e)}")
 
-# Download + Mermaid Live link
+# Download and Mermaid Live
 if mermaid_code:
     st.subheader("Download Mermaid Code")
     st.download_button(
@@ -106,11 +105,12 @@ if mermaid_code:
 
     st.subheader("Open in Mermaid Live Editor")
 
-    encoded = base64.urlsafe_b64encode(mermaid_code.encode("utf-8")).decode("ascii")
-    mermaid_live_url = f"https://mermaid.live/edit#code={encoded}"
+    encoded_diagram = urllib.parse.quote(mermaid_code)
+    mermaid_live_url = f"https://mermaid.live/edit#code={encoded_diagram}"
 
     st.markdown(
         f"[Click here to view/edit/export at Mermaid Live]({mermaid_live_url})",
         unsafe_allow_html=True
     )
+
 
