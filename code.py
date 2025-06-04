@@ -5,11 +5,11 @@ import re
 import uuid
 import urllib.parse
 
-# Page setup
+# Streamlit setup
 st.set_page_config(layout="wide")
 st.title("Claude 3.5 → Mermaid Flowchart Generator")
 
-# AWS credentials
+# AWS credentials from secrets
 AWS_ACCESS_KEY_ID = st.secrets["AWS_ACCESS_KEY_ID"]
 AWS_SECRET_ACCESS_KEY = st.secrets["AWS_SECRET_ACCESS_KEY"]
 AWS_SESSION_TOKEN = st.secrets["AWS_SESSION_TOKEN"]
@@ -26,11 +26,7 @@ def call_claude(logic_text):
     )
     client = session.client("bedrock-runtime")
 
-    prompt = (
-        "Convert the following process into a Mermaid flowchart. "
-        "Return only valid Mermaid code starting with 'flowchart TD'. No explanation, no formatting.\n\n"
-        f"{logic_text}"
-    )
+    prompt = logic_text
 
     payload = {
         "anthropic_version": "bedrock-2023-05-31",
@@ -49,8 +45,8 @@ def call_claude(logic_text):
     result = json.loads(response["body"].read())
     return result["content"][0]["text"]
 
-# Sanitize Mermaid output
-def sanitize_mermaid(raw: str):
+# Clean diagram
+def sanitize_mermaid(raw):
     code = raw.strip()
     code = re.sub(r"^```mermaid", "", code, flags=re.IGNORECASE).strip()
     code = re.sub(r"```$", "", code).strip()
@@ -60,11 +56,11 @@ def sanitize_mermaid(raw: str):
             code = match.group(1)
     return code
 
-# Text input
-default = "steps involved in verifying a user's identity on a website"
-logic_text = st.text_area("Enter a process description:", value=default, height=200)
+# Text input (use original prompt)
+def_prompt = "steps involved in a description of string"
+logic_text = st.text_area("Enter your process description (prompt):", value=def_prompt, height=200)
 
-# Trigger
+# Generate diagram
 mermaid_code = None
 if st.button("Generate Diagram"):
     with st.spinner("Calling Claude 3.5..."):
@@ -100,7 +96,6 @@ if mermaid_code:
         mime="text/plain"
     )
 
-    # Working Mermaid Live link
     st.subheader("Open in Mermaid Live")
     encoded = urllib.parse.quote(mermaid_code)
     live_url = f"https://mermaid.live/edit#code={encoded}"
