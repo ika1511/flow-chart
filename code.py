@@ -1,15 +1,15 @@
 import streamlit as st
 import boto3
 import json
-import uuid
 import re
+import uuid
 import urllib.parse
 
-# Streamlit setup
+# Page setup
 st.set_page_config(layout="wide")
 st.title("Claude 3.5 → Mermaid Flowchart Generator")
 
-# AWS credentials from secrets
+# AWS credentials
 AWS_ACCESS_KEY_ID = st.secrets["AWS_ACCESS_KEY_ID"]
 AWS_SECRET_ACCESS_KEY = st.secrets["AWS_SECRET_ACCESS_KEY"]
 AWS_SESSION_TOKEN = st.secrets["AWS_SESSION_TOKEN"]
@@ -27,15 +27,15 @@ def call_claude(logic_text):
     client = session.client("bedrock-runtime")
 
     prompt = (
-        "Convert the following phrase into a Mermaid flowchart representing the steps involved. "
-        "Return only the diagram code. Start with 'flowchart TD'. No explanation, no formatting.\n\n"
+        "Convert the following process into a Mermaid flowchart. "
+        "Return only valid Mermaid code starting with 'flowchart TD'. No explanation, no formatting.\n\n"
         f"{logic_text}"
     )
 
     payload = {
         "anthropic_version": "bedrock-2023-05-31",
         "max_tokens": 1024,
-        "temperature": 0.3,
+        "temperature": 0.2,
         "messages": [{"role": "user", "content": [{"type": "text", "text": prompt}]}]
     }
 
@@ -49,68 +49,59 @@ def call_claude(logic_text):
     result = json.loads(response["body"].read())
     return result["content"][0]["text"]
 
-# Clean Claude's output
-def sanitize_mermaid_code(raw_code: str) -> str:
-    code = raw_code.strip()
+# Sanitize Mermaid output
+def sanitize_mermaid(raw: str):
+    code = raw.strip()
     code = re.sub(r"^```mermaid", "", code, flags=re.IGNORECASE).strip()
     code = re.sub(r"```$", "", code).strip()
-    code = re.sub(r"--\s*>", "-->", code)
-    code = re.sub(r"==>", "-->", code)
-    code = re.sub(r"-{3,}>", "-->", code)
-    code = re.sub(r"-->\s*\|(.*?)\|\s*", r"-- \1 -->", code)
-    diagram_start = re.search(r"(flowchart\s+TD|graph\s+TD)", code, re.IGNORECASE)
-    if diagram_start:
-        code = code[diagram_start.start():]
+    if not code.startswith("flowchart TD"):
+        match = re.search(r"(flowchart\s+TD.*)", code, re.IGNORECASE | re.DOTALL)
+        if match:
+            code = match.group(1)
     return code
 
-# UI: text area
-default_prompt = "steps involved in a description of string"
-logic_text = st.text_area("Enter a process description:", value=default_prompt, height=200)
+# Text input
+default = "steps involved in verifying a user's identity on a website"
+logic_text = st.text_area("Enter a process description:", value=default, height=200)
 
-# Generate diagram
+# Trigger
 mermaid_code = None
-if st.button("Generate Mermaid Diagram"):
+if st.button("Generate Diagram"):
     with st.spinner("Calling Claude 3.5..."):
         try:
             raw_output = call_claude(logic_text)
-            mermaid_code = sanitize_mermaid_code(raw_output)
+            mermaid_code = sanitize_mermaid(raw_output)
 
             st.subheader("Mermaid Code")
             st.code(mermaid_code, language="mermaid")
 
-            st.subheader("Rendered Diagram")
+            st.subheader("Diagram")
             unique_id = str(uuid.uuid4()).replace("-", "")
             st.components.v1.html(f"""
                 <div id="mermaid-{unique_id}">
-                  <pre class="mermaid">
+                <pre class="mermaid">
 {mermaid_code}
-                  </pre>
+                </pre>
                 </div>
                 <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
                 <script>mermaid.initialize({{ startOnLoad: true }});</script>
             """, height=500, scrolling=True)
 
         except Exception as e:
-            st.error(f"Error: {str(e)}")
+            st.error(f"❌ Error: {str(e)}")
 
-# Download and Mermaid Live
+# If diagram exists
 if mermaid_code:
     st.subheader("Download Mermaid Code")
     st.download_button(
-        label="Download as .mmd file",
+        label="Download .mmd file",
         data=mermaid_code,
-        file_name="flowchart.mmd",
+        file_name="diagram.mmd",
         mime="text/plain"
     )
 
-    st.subheader("Open in Mermaid Live Editor")
-
-    encoded_diagram = urllib.parse.quote(mermaid_code)
-    mermaid_live_url = f"https://mermaid.live/edit#code={encoded_diagram}"
-
-    st.markdown(
-        f"[Click here to view/edit/export at Mermaid Live]({mermaid_live_url})",
-        unsafe_allow_html=True
-    )
-
-
+    # Working Mermaid Live link
+    st.subheader("Open in Mermaid Live")
+    encoded = urllib.parse.quote(mermaid_code)
+    live_url = f"https://mermaid.live/edit#code={encoded}"
+    st.markdown(f"[Click here to view in Mermaid Live →]({live_url})", unsafe_allow_html=True)
