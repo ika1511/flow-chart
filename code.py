@@ -107,7 +107,9 @@ if mermaid_code:
 
     st.subheader("Open in Mermaid Live Editor")
     encoded_diagram = urllib.parse.quote(mermaid_code)
-    mermaid_live_url = f"https://mermaid.live/edit#pako:{encoded_diagram}"
+   encoded_diagram = urllib.parse.quote(mermaid_code)
+mermaid_live_url = f"https://mermaid.live/edit#code={encoded_diagram}"
+
     st.markdown(
         f"[Click here to open and export as PNG/SVG]({mermaid_live_url})",
         unsafe_allow_html=True
