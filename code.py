@@ -3,19 +3,20 @@ import boto3
 import json
 import uuid
 import re
+import urllib.parse
 
-# Streamlit config
+# Streamlit page setup
 st.set_page_config(layout="wide")
 st.title("Claude 3.5 → Mermaid Flowchart Generator")
 
-# AWS credentials
+# AWS Bedrock credentials (set in secrets.toml or Streamlit Cloud)
 AWS_ACCESS_KEY_ID = st.secrets["AWS_ACCESS_KEY_ID"]
 AWS_SECRET_ACCESS_KEY = st.secrets["AWS_SECRET_ACCESS_KEY"]
 AWS_SESSION_TOKEN = st.secrets["AWS_SESSION_TOKEN"]
 REGION = "us-west-2"
 MODEL_ID = "anthropic.claude-3-5-sonnet-20240620-v1:0"
 
-# Claude call
+# Claude 3.5 call via Bedrock
 def call_claude(logic_text):
     session = boto3.Session(
         aws_access_key_id=AWS_ACCESS_KEY_ID,
@@ -48,7 +49,7 @@ def call_claude(logic_text):
     result = json.loads(response["body"].read())
     return result["content"][0]["text"]
 
-# Clean Claude output
+# Sanitize and clean Claude's Mermaid output
 def sanitize_mermaid_code(raw_code: str) -> str:
     code = raw_code.strip()
     code = re.sub(r"^```mermaid", "", code, flags=re.IGNORECASE).strip()
@@ -62,14 +63,14 @@ def sanitize_mermaid_code(raw_code: str) -> str:
         code = code[diagram_start.start():]
     return code
 
-# User input
+# Default input
 default_prompt = "steps involved in a description of string"
 logic_text = st.text_area("Enter a process description:", value=default_prompt, height=200)
 
-# Track diagram
+# Mermaid output
 mermaid_code = None
 
-# Generate button
+# Trigger diagram generation
 if st.button("Generate Mermaid Diagram"):
     with st.spinner("Calling Claude 3.5..."):
         try:
@@ -94,17 +95,20 @@ if st.button("Generate Mermaid Diagram"):
         except Exception as e:
             st.error(f"Error: {str(e)}")
 
-# Show download button only if code exists
+# Post-render options
 if mermaid_code:
-    st.subheader("Download Mermaid Diagram")
+    st.subheader("Download Mermaid Code")
     st.download_button(
-        label="Download Mermaid Code (.mmd)",
+        label="Download as .mmd file",
         data=mermaid_code,
         file_name="flowchart.mmd",
         mime="text/plain"
     )
 
+    st.subheader("Open in Mermaid Live Editor")
+    encoded_diagram = urllib.parse.quote(mermaid_code)
+    mermaid_live_url = f"https://mermaid.live/edit#pako:{encoded_diagram}"
     st.markdown(
-        "To convert this into an image, paste the code at [https://mermaid.live](https://mermaid.live) "
-        "and use the Export menu to save as PNG or SVG."
+        f"[Click here to open and export as PNG/SVG]({mermaid_live_url})",
+        unsafe_allow_html=True
     )
