@@ -101,7 +101,7 @@ if mermaid_code:
     st.download_button(
         label="Download as .mmd file",
         data=mermaid_code,
-        file_name="flowchart.mmd",
+        file_name="flowchart.txt",
         mime="text/plain"
     )
 
