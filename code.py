@@ -3,9 +3,9 @@ import boto3
 import json
 import uuid
 import re
-import urllib.parse
+import base64
 
-# Configure page
+# Streamlit layout
 st.set_page_config(layout="wide")
 st.title("Claude 3.5 → Mermaid Flowchart Generator")
 
@@ -16,7 +16,7 @@ AWS_SESSION_TOKEN = st.secrets["AWS_SESSION_TOKEN"]
 REGION = "us-west-2"
 MODEL_ID = "anthropic.claude-3-5-sonnet-20240620-v1:0"
 
-# Call Claude via AWS Bedrock
+# Claude Bedrock call
 def call_claude(logic_text):
     session = boto3.Session(
         aws_access_key_id=AWS_ACCESS_KEY_ID,
@@ -49,7 +49,7 @@ def call_claude(logic_text):
     result = json.loads(response["body"].read())
     return result["content"][0]["text"]
 
-# Clean up Mermaid code
+# Clean and fix Mermaid syntax
 def sanitize_mermaid_code(raw_code: str) -> str:
     code = raw_code.strip()
     code = re.sub(r"^```mermaid", "", code, flags=re.IGNORECASE).strip()
@@ -67,8 +67,9 @@ def sanitize_mermaid_code(raw_code: str) -> str:
 default_prompt = "steps involved in a description of string"
 logic_text = st.text_area("Enter a process description:", value=default_prompt, height=200)
 
-# Generate diagram
 mermaid_code = None
+
+# Generate diagram
 if st.button("Generate Mermaid Diagram"):
     with st.spinner("Calling Claude 3.5..."):
         try:
@@ -93,7 +94,7 @@ if st.button("Generate Mermaid Diagram"):
         except Exception as e:
             st.error(f"Error: {str(e)}")
 
-# Show download and live editor links
+# Download + Mermaid Live link
 if mermaid_code:
     st.subheader("Download Mermaid Code")
     st.download_button(
@@ -104,10 +105,12 @@ if mermaid_code:
     )
 
     st.subheader("Open in Mermaid Live Editor")
-    encoded_diagram = urllib.parse.quote(mermaid_code)
-    mermaid_live_url = f"https://mermaid.live/edit#code={encoded_diagram}"
+
+    encoded = base64.urlsafe_b64encode(mermaid_code.encode("utf-8")).decode("ascii")
+    mermaid_live_url = f"https://mermaid.live/edit#code={encoded}"
+
     st.markdown(
-        f"[Click here to edit/export as PNG/SVG]({mermaid_live_url})",
+        f"[Click here to view/edit/export at Mermaid Live]({mermaid_live_url})",
         unsafe_allow_html=True
     )
 
