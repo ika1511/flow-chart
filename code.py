@@ -61,7 +61,7 @@ def sanitize_mermaid(raw: str):
     return code
 
 # Text input
-default = "steps involved in verifying a user's identity on a website"
+default = "steps involved in a description of string"
 logic_text = st.text_area("Enter a process description:", value=default, height=200)
 
 # Trigger
