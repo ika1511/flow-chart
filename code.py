@@ -4,6 +4,8 @@ import json
 import re
 import uuid
 import urllib.parse
+import base64
+import requests
 
 # Page setup
 st.set_page_config(layout="wide")
@@ -60,6 +62,15 @@ def sanitize_mermaid(raw: str):
             code = match.group(1)
     return code
 
+# Generate PNG image using Kroki API
+def get_mermaid_image(mermaid_code):
+    url = "https://kroki.io/mermaid/png"
+    response = requests.post(url, data=mermaid_code.encode("utf-8"))
+    if response.status_code == 200:
+        return response.content  # PNG bytes
+    else:
+        raise RuntimeError(f"Kroki failed with status code {response.status_code}")
+
 # Text input
 default = "steps involved in a description of string"
 logic_text = st.text_area("Enter a process description:", value=default, height=200)
@@ -94,14 +105,32 @@ if st.button("Generate Diagram"):
 if mermaid_code:
     st.subheader("Download Mermaid Code")
     st.download_button(
-        label="Download .mmd file",
+        label="Download as .mmd file",
         data=mermaid_code,
-        file_name="diagram.mmd",
+        file_name="flowchart.mmd",
         mime="text/plain"
     )
 
-    # Working Mermaid Live link
+    st.subheader("Download Diagram Image")
+    try:
+        img_data = get_mermaid_image(mermaid_code)
+        st.download_button(
+            label="Download as PNG",
+            data=img_data,
+            file_name="flowchart.png",
+            mime="image/png"
+        )
+    except Exception as e:
+        st.error(f"❌ Failed to generate diagram image: {str(e)}")
+
+    # Mermaid Live link
     st.subheader("Open in Mermaid Live")
-    encoded = urllib.parse.quote(mermaid_code)
-    live_url = f"https://mermaid.live/edit#code={encoded}"
+    encoded = base64.b64encode(mermaid_code.encode("utf-8")).decode("utf-8")
+    live_url = f"https://mermaid.live/edit#pako={encoded}"
     st.markdown(f"[Click here to view in Mermaid Live →]({live_url})", unsafe_allow_html=True)
+
+    st.markdown(
+        """
+        📥 **Tip:** On the Mermaid Live site, click the download icon to export as PNG, SVG, or PDF.
+        """
+    )
