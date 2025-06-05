@@ -121,4 +121,3 @@ if mermaid_code:
     encoded = urllib.parse.quote(mermaid_code)
     live_url = f"https://mermaid.live/edit#code={encoded}"
     st.markdown(f"[Click here to view in Mermaid Live →]({live_url})", unsafe_allow_html=True)
-
