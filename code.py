@@ -4,13 +4,12 @@ import json
 import re
 import uuid
 import urllib.parse
-import subprocess
 
-# Streamlit setup
+# Page setup
 st.set_page_config(layout="wide")
 st.title("Claude 3.5 → Mermaid Flowchart Generator")
 
-# AWS credentials from secrets
+# AWS credentials
 AWS_ACCESS_KEY_ID = st.secrets["AWS_ACCESS_KEY_ID"]
 AWS_SECRET_ACCESS_KEY = st.secrets["AWS_SECRET_ACCESS_KEY"]
 AWS_SESSION_TOKEN = st.secrets["AWS_SESSION_TOKEN"]
@@ -27,7 +26,11 @@ def call_claude(logic_text):
     )
     client = session.client("bedrock-runtime")
 
-    prompt = logic_text
+    prompt = (
+        "Convert the following process into a Mermaid flowchart. "
+        "Return only valid Mermaid code starting with 'flowchart TD'. No explanation, no formatting.\n\n"
+        f"{logic_text}"
+    )
 
     payload = {
         "anthropic_version": "bedrock-2023-05-31",
@@ -46,8 +49,8 @@ def call_claude(logic_text):
     result = json.loads(response["body"].read())
     return result["content"][0]["text"]
 
-# Clean diagram
-def sanitize_mermaid(raw):
+# Sanitize Mermaid output
+def sanitize_mermaid(raw: str):
     code = raw.strip()
     code = re.sub(r"^```mermaid", "", code, flags=re.IGNORECASE).strip()
     code = re.sub(r"```$", "", code).strip()
@@ -57,19 +60,11 @@ def sanitize_mermaid(raw):
             code = match.group(1)
     return code
 
-# Generate diagram image using mermaid-cli
-def generate_diagram_image(code: str, filename="flowchart.png"):
-    with open("diagram.mmd", "w") as f:
-        f.write(code)
-    subprocess.run(["mmdc", "-i", "diagram.mmd", "-o", filename], check=True)
-    with open(filename, "rb") as f:
-        return f.read()
+# Text input
+default = "steps involved in verifying a user's identity on a website"
+logic_text = st.text_area("Enter a process description:", value=default, height=200)
 
-# Text input (use original prompt)
-def_prompt = "steps involved in a description of string"
-logic_text = st.text_area("Enter your process description (prompt):", value=def_prompt, height=200)
-
-# Generate diagram
+# Trigger
 mermaid_code = None
 if st.button("Generate Diagram"):
     with st.spinner("Calling Claude 3.5..."):
@@ -105,18 +100,7 @@ if mermaid_code:
         mime="text/plain"
     )
 
-    st.subheader("Download Diagram as PNG (requires mermaid-cli)")
-    try:
-        image_bytes = generate_diagram_image(mermaid_code)
-        st.download_button(
-            label="Download Diagram as PNG",
-            data=image_bytes,
-            file_name="flowchart.png",
-            mime="image/png"
-        )
-    except Exception as e:
-        st.error(f"Diagram rendering failed: {e}")
-
+    # Working Mermaid Live link
     st.subheader("Open in Mermaid Live")
     encoded = urllib.parse.quote(mermaid_code)
     live_url = f"https://mermaid.live/edit#code={encoded}"
