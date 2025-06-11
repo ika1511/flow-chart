@@ -8,11 +8,10 @@ import requests
 
 # --- Page setup ---
 st.set_page_config(
-    page_title="Flowchart Generator",
-    page_icon="🧩",  # You can use a favicon emoji or replace with "favicon.png"
+    page_title="Mermaid Diagram Generator",
     layout="wide"
 )
-st.title("Claude 3.5 → Mermaid Flowchart Generator")
+st.title("Claude 3.5 → Mermaid Diagram Generator")
 
 # --- AWS credentials ---
 AWS_ACCESS_KEY_ID = st.secrets["AWS_ACCESS_KEY_ID"]
@@ -22,7 +21,7 @@ REGION = "us-west-2"
 MODEL_ID = "anthropic.claude-3-5-sonnet-20240620-v1:0"
 
 # --- Claude API call ---
-def call_claude(logic_text):
+def call_claude(description: str) -> str:
     session = boto3.Session(
         aws_access_key_id=AWS_ACCESS_KEY_ID,
         aws_secret_access_key=AWS_SECRET_ACCESS_KEY,
@@ -32,9 +31,10 @@ def call_claude(logic_text):
     client = session.client("bedrock-runtime")
 
     prompt = (
-        "Convert the following process into a Mermaid flowchart. "
-        "Return only valid Mermaid code starting with 'flowchart TD'. No explanation, no formatting.\n\n"
-        f"{logic_text}"
+        "Convert the following description into an appropriate Mermaid diagram "
+        "(flowchart, sequence, class, gantt, state, ER, etc.). "
+        "Return only valid Mermaid code with no extra text or formatting.\n\n"
+        f"{description}"
     )
 
     payload = {
@@ -55,91 +55,81 @@ def call_claude(logic_text):
     return result["content"][0]["text"]
 
 # --- Clean Claude output ---
-def sanitize_mermaid(raw: str):
+def sanitize_mermaid(raw: str) -> str:
     code = raw.strip()
     code = re.sub(r"^```mermaid", "", code, flags=re.IGNORECASE).strip()
     code = re.sub(r"```$", "", code).strip()
-    if not code.startswith("flowchart TD"):
-        match = re.search(r"(flowchart\s+TD.*)", code, re.IGNORECASE | re.DOTALL)
-        if match:
-            code = match.group(1)
     return code
 
 # --- Generate PNG from Mermaid via Kroki.io ---
-def get_mermaid_image(mermaid_code):
-    url = "https://kroki.io/mermaid/png"
-    response = requests.post(url, data=mermaid_code.encode("utf-8"))
-    if response.status_code == 200:
-        return response.content
-    else:
-        raise RuntimeError(f"Kroki failed with status code {response.status_code}")
+def get_mermaid_image(mermaid_code: str) -> bytes:
+    resp = requests.post("https://kroki.io/mermaid/png", data=mermaid_code.encode("utf-8"))
+    if resp.status_code == 200:
+        return resp.content
+    raise RuntimeError(f"Kroki failed with status code {resp.status_code}")
 
-# --- Initialize session state ---
+# --- Session state ---
 if "mermaid_code" not in st.session_state:
     st.session_state["mermaid_code"] = None
+if "description" not in st.session_state:
+    st.session_state["description"] = ""
 
-if "logic_text" not in st.session_state:
-    st.session_state["logic_text"] = "steps involved in a description of string"
-
-# --- Text input UI ---
-logic_text = st.text_area(
-    "Describe your process:",
-    value=st.session_state["logic_text"],
+# --- Input ---
+description = st.text_area(
+    "Describe the process, system, or interaction you’d like visualised:",
+    value=st.session_state["description"],
     height=200
 )
 
 # --- Generate diagram ---
-if st.button("Create Flowchart"):
-    with st.spinner("Calling Claude 3.5..."):
+if st.button("Create Diagram"):
+    with st.spinner("Generating…"):
         try:
-            raw_output = call_claude(logic_text)
-            st.session_state["mermaid_code"] = sanitize_mermaid(raw_output)
-            st.session_state["logic_text"] = logic_text  # Save text area content
+            raw = call_claude(description)
+            st.session_state["mermaid_code"] = sanitize_mermaid(raw)
+            st.session_state["description"] = description
         except Exception as e:
-            st.error(f"Error: {str(e)}")
+            st.error(f"Error: {e}")
 
-# --- Show diagram + download options ---
-if st.session_state["mermaid_code"]:
-    code = st.session_state["mermaid_code"]
-
-    st.subheader("Flowchart Code")
+# --- Display + downloads ---
+code = st.session_state["mermaid_code"]
+if code:
+    st.subheader("Diagram Code")
     st.code(code, language="mermaid")
 
-    st.subheader("Diagram")
-    unique_id = str(uuid.uuid4()).replace("-", "")
-    st.components.v1.html(f"""
-        <div id="mermaid-{unique_id}">
-        <pre class="mermaid">
-{code}
-        </pre>
+    st.subheader("Rendered Diagram")
+    uid = uuid.uuid4().hex
+    st.components.v1.html(
+        f"""
+        <div id="mermaid-{uid}">
+          <pre class="mermaid">{code}</pre>
         </div>
         <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
         <script>mermaid.initialize({{ startOnLoad: true }});</script>
-    """, height=500, scrolling=True)
+        """,
+        height=500,
+        scrolling=True
+    )
 
-    # --- Download .mmd code ---
     st.download_button(
-        label="Download as .mmd file",
+        "Download .mmd file",
         data=code,
-        file_name="flowchart.mmd",
+        file_name="diagram.mmd",
         mime="text/plain"
     )
 
-    # --- Download PNG image via Kroki ---
     try:
         img_data = get_mermaid_image(code)
         st.download_button(
-            label="Download as PNG",
+            "Download PNG",
             data=img_data,
-            file_name="flowchart.png",
+            file_name="diagram.png",
             mime="image/png"
         )
     except Exception as e:
-        st.error(f"Failed to generate diagram image: {str(e)}")
+        st.error(f"Failed to generate PNG: {e}")
 
-    # --- Mermaid Live Editor ---
-    encoded = base64.b64encode(code.encode("utf-8")).decode("utf-8")
+    encoded = base64.b64encode(code.encode()).decode()
     live_url = f"https://mermaid.live/edit#pako={encoded}"
-    st.subheader("Edit in Mermaid Live")
     st.markdown(f"[Open in Mermaid Live Editor →]({live_url})", unsafe_allow_html=True)
 
