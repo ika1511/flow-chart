@@ -21,7 +21,7 @@ REGION = "us-west-2"
 MODEL_ID = "anthropic.claude-3-5-sonnet-20240620-v1:0"
 
 # --- Sidebar Controls ---
-st.sidebar.title("🛠 Settings")
+st.sidebar.title("Settings")
 mode = st.sidebar.radio("Choose output mode", ["Generate Diagram", "Elaborate Description"])
 
 examples = {
